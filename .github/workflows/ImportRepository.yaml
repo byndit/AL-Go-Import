@@ -1,0 +1,73 @@
+name: " Import Repository"
+
+on:
+  workflow_dispatch:
+    inputs:
+      importUrl:
+        description: Import from URL
+        required: true
+      templateUrl:
+        description: Template URL
+        required: true
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ImportRepo:
+    runs-on: [windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: setup git config
+        run: |
+          git config --global init.defaultBranch main
+          git config --global user.name "Github Importer"
+          git config --global user.email "<>"
+
+      - name: get remote url
+        id: get-remote-url
+        run: |
+          remote_url=$(git remote get-url origin)
+          echo "REMOTE_URL=$remote_url" >> $GITHUB_OUTPUT
+
+      - name: remove all
+        run: rm -rf .* *
+
+      - name: clone template
+        run: git clone $TEMPLATE_URL .
+        env:
+          TEMPLATE_URL: ${{ inputs.templateUrl }}
+
+      - name: remove al-go repo
+        run: |
+          rm -rf .git
+          git clone --bare $IMPORT_URL .git
+          git config --unset core.bare
+          git reset
+          git add .github
+          git add .azureDevOps 2> /dev/null
+          git add scripts 2> /dev/null
+          git add .gitignore 2> /dev/null
+          git add .AL-Go
+          git commit -m "Apply AL-Go folders"
+          git reset --hard
+          git add -A
+          git commit -m "Apply AL-Go files"
+        env:
+          IMPORT_URL: ${{ inputs.importUrl }}
+
+      - name: git add
+        run: |
+          (git show-branch main &>/dev/null) && (git checkout main) || (git checkout -b main)
+          git remote set-url origin ${{ steps.get-remote-url.outputs.REMOTE_URL }}
+          git config url."https://$TOKEN@github".insteadOf https://github
+          git push --force --all origin
+          git config --remove-section url."https://$TOKEN@github"
+        env:
+          TOKEN: ${{ secrets.GHTOKENWORKFLOW }}
